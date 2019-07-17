@@ -82,6 +82,44 @@ export declare interface Orderbook {
     bid: Array<OrderbookRecord>;
 }
 
+export declare interface FixedFee {
+    type: 'fixed';
+    asset: {
+        amount: number;
+        currency: string;
+        to_usd: number;
+    };
+}
+
+export declare interface PercentFee {
+    type: 'percent';
+    amount: number;
+}
+
+export declare interface FiatFeeInformation {
+    code: string;
+    category: string;
+    deposit_fees: Array<FixedFee|PercentFee>;
+    withdraw_fees: Array<FixedFee|PercentFee>;
+}
+
+export declare interface CryptoFeeInformation {
+    code: string;
+    category: 'coin';
+    deposit_fees: Array<FixedFee>;
+    withdraw_fees: Array<FixedFee>;
+    min_deposit: {
+        amount: number;
+        currency: string;
+        to_usd: number;
+    };
+    min_withdraw: {
+        amount: number;
+        currency: string;
+        to_usd: number;
+    };
+}
+
 export class KunaAccessToken {
 
     constructor(
@@ -185,6 +223,11 @@ export class KunaClient {
     public async getPriceChart(): Promise<undefined> {
         // Not implemented yet
         return undefined;
+    }
+
+    public async getFees(): Promise<Array<CryptoFeeInformation|FiatFeeInformation>> {
+        const response = await this.request('/fees', 'GET');
+        return response.data as Array<CryptoFeeInformation|FiatFeeInformation>;
     }
 
     private async request(path: string, method: Method = 'GET', body: object = {}): Promise<AxiosResponse<any>> {
