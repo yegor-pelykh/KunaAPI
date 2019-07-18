@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import Axios, { AxiosInstance, AxiosResponse, Method } from 'axios';
 
 // Request types
@@ -120,13 +121,29 @@ export declare interface CryptoFeeInformation {
     };
 }
 
-export class KunaAccessToken {
+export declare interface AccountInfo {
+    email: string;
+    kunaid: string;
+    two_factor: boolean;
+    withdraw_confirmation: boolean;
+    public_keys: {
+        deposit_sdk_uah_public_key: string;
+        deposit_sdk_usd_public_key: string;
+        deposit_sdk_rub_public_key: string;
+        deposit_sdk_uah_worldwide_public_key: string;
+    };
+    announcements: boolean;
+}
 
-    constructor(
-        public publicKey: string,
-        public secretKey: string
-    ) { }
+export declare interface WalletInfo {
+    currency: string;
+    available: number;
+    total: number;
+}
 
+export interface KunaAccessToken {
+    publicKey: string;
+    secretKey: string;
 }
 
 class KunaUtils {
@@ -167,6 +184,14 @@ class KunaUtils {
             ask: ask,
             bid: bid
         }
+    }
+
+    public static mapWallets(data: Array<Array<any>>): Array<WalletInfo> {
+        return data.map(a => <WalletInfo>{
+            currency: a[1],
+            total: a[2],
+            available: a[4]
+        });
     }
     
 }
@@ -229,6 +254,21 @@ export class KunaClient {
         const response = await this.request('/fees', 'GET');
         return response.data as Array<CryptoFeeInformation|FiatFeeInformation>;
     }
+    
+    public async getUserAccountInfo(): Promise<AccountInfo> {
+        const response = await this.requestPrivate('/auth/me', 'POST');
+        return response.data as AccountInfo;
+    }
+
+    public async getUserWallets(): Promise<Array<WalletInfo>> {
+        const response = await this.requestPrivate('/auth/r/wallets', 'POST');
+        return KunaUtils.mapWallets(response.data);
+    }
+
+    public async createOrder(): Promise<undefined> {
+        // Not implemented yet
+        return undefined;
+    }
 
     private async request(path: string, method: Method = 'GET', body: object = {}): Promise<AxiosResponse<any>> {
         let headers: any = {
@@ -236,12 +276,46 @@ export class KunaClient {
         }
         if (Object.keys(body).length > 0)
             headers['Content-Type'] = 'application/json';
+        
         return await this.axios.request({
             url: path,
             method: method,
             data: body,
             headers: headers
         });
+    }
+
+    private async requestPrivate(path: string, method: Method = 'GET', body: object = {}): Promise<AxiosResponse<any>> {
+        if (this.accessToken == null || !this.isAccessTokenValid(this.accessToken))
+            throw new Error('AccessToken is invalid. You cannot use private methods.');
+        
+        const nonce = new Date().getTime();
+        const signatureContent = `/v3${path}${nonce}${JSON.stringify(body)}`;
+        const signature = crypto.createHmac('sha384', this.accessToken.secretKey)
+            .update(signatureContent).digest('hex');
+        
+        let headers: any = {
+            'Accept': 'application/json',
+            'Kun-Nonce': nonce,
+            'Kun-ApiKey': this.accessToken.publicKey,
+            'Kun-Signature': signature,
+        }
+        if (Object.keys(body).length > 0)
+            headers['Content-Type'] = 'application/json';
+
+        return await this.axios.request({
+            url: path,
+            method: method,
+            data: body,
+            headers: headers
+        });
+    }
+
+    private isAccessTokenValid(accessToken: KunaAccessToken): boolean {
+        return typeof accessToken.publicKey === 'string'
+            && typeof accessToken.secretKey === 'string'
+            && accessToken.publicKey.length === 40
+            && accessToken.secretKey.length === 40;
     }
 
 }

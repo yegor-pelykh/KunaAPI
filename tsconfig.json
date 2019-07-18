@@ -9,7 +9,7 @@
 			"es2015"
 		],
 		"esModuleInterop": true,
-		"removeComments": false
+		"removeComments": true
 	},
 	"include": [
 		"lib/*"
