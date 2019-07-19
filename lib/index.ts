@@ -14,6 +14,20 @@ export declare interface OrderbookRequestParams {
     symbol: string;
 }
 
+export declare interface UserActiveOrdersRequestParams {
+    markets: Array<string>;
+}
+
+export declare interface UserFilledOrdersRequestParams {
+    markets: Array<string>;
+    filters?: {
+        start: number;
+        end: number;
+        limit: number;
+        sort: 1 | -1
+    }
+}
+
 export declare interface KunaTimestampInfo {
     timestamp: number;
     timestamp_miliseconds: number;
@@ -141,6 +155,20 @@ export declare interface WalletInfo {
     total: number;
 }
 
+export declare interface UserOrderInfo {
+    id: number;
+    side: string;
+    market: string;
+    created_at: number;
+    updated_at: number;
+    volume: number;
+    initial_volume: number;
+    type: string;
+    status: string;
+    price: number;
+    avg_price: number;
+}
+
 export interface KunaAccessToken {
     publicKey: string;
     secretKey: string;
@@ -191,6 +219,26 @@ class KunaUtils {
             currency: a[1],
             total: a[2],
             available: a[4]
+        });
+    }
+
+    public static mapUserOrders(data: Array<Array<any>>): Array<UserOrderInfo> {
+        return data.map(a => {
+            const initial_volume: number = parseFloat(a[7]);
+            const side: string = initial_volume > 0 ? 'BUY' : 'SELL';
+            return <UserOrderInfo>{
+                id: a[0],
+                side: side,
+                market: a[3],
+                created_at: a[4],
+                updated_at: a[5],
+                volume: parseFloat(a[6]),
+                initial_volume: Math.abs(initial_volume),
+                type: a[8],
+                status: a[13],
+                price: parseFloat(a[16]),
+                avg_price: parseFloat(a[17])
+            };
         });
     }
     
@@ -268,6 +316,21 @@ export class KunaClient {
     public async createOrder(): Promise<undefined> {
         // Not implemented yet
         return undefined;
+    }
+
+    public async getUserActiveOrders(params?: UserActiveOrdersRequestParams): Promise<Array<UserOrderInfo>> {
+        const markets = params != undefined ? params.markets : undefined;
+        const path = `/auth/r/orders${Array.isArray(markets) ? `/${markets.join(',')}` : ''}`;
+        const response = await this.requestPrivate(path, 'POST');
+        return KunaUtils.mapUserOrders(response.data);
+    }
+
+    public async getUserFilledOrders(params?: UserFilledOrdersRequestParams): Promise<Array<UserOrderInfo>> {
+        const markets = params != undefined ? params.markets : undefined;
+        const body = params != undefined ? params.filters : undefined;
+        const path = `/auth/r/orders${Array.isArray(markets) ? `/${markets.join(',')}` : ''}/hist`;
+        const response = await this.requestPrivate(path, 'POST', body);
+        return KunaUtils.mapUserOrders(response.data);
     }
 
     private async request(path: string, method: Method = 'GET', body: object = {}): Promise<AxiosResponse<any>> {
