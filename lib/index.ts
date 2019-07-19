@@ -1,6 +1,11 @@
 import * as crypto from 'crypto';
 import Axios, { AxiosInstance, AxiosResponse, Method } from 'axios';
 
+enum TradePosition {
+    Maker = 1,
+    Taker = -1
+}
+
 // Request types
 export declare interface ExchangeRatesRequestParams {
     currency: string;
@@ -12,6 +17,10 @@ export declare interface TickersRequestParams {
 
 export declare interface OrderbookRequestParams {
     symbol: string;
+}
+
+export declare interface CancelOrdersRequestParams {
+    order_ids: Array<number>;
 }
 
 export declare interface UserActiveOrdersRequestParams {
@@ -26,6 +35,15 @@ export declare interface UserFilledOrdersRequestParams {
         limit: number;
         sort: 1 | -1
     }
+}
+
+export declare interface UserTradesByOrderRequestParams {
+    market: string;
+    order_id: number;
+}
+
+export declare interface DepositAddressRequestParams {
+    currency: string;
 }
 
 export declare interface KunaTimestampInfo {
@@ -155,6 +173,24 @@ export declare interface WalletInfo {
     total: number;
 }
 
+export declare interface CancelledOrderInfo {
+    id: number;
+    side: string;
+    type: string;
+    price: number;
+    avg_execution_price: number;
+    symbol: string;
+    timestamp: number;
+    original_amount: number;
+    remaining_amount: number;
+    executed_amount: number;
+    is_cancelled: null;
+    is_hidden: null;
+    is_live: null;
+    was_forced: null;
+    exchange: null;
+}
+
 export declare interface UserOrderInfo {
     id: number;
     side: string;
@@ -167,6 +203,29 @@ export declare interface UserOrderInfo {
     status: string;
     price: number;
     avg_price: number;
+}
+
+export declare interface UserTradeInfo {
+    trade_id: number;
+    market: string;
+    timestamp: number;
+    order_id: number;
+    amount: number;
+    price: number;
+    position: TradePosition;
+    fee: number;
+    currency: string;
+}
+
+export declare interface DepositAddressInfo {
+    confirmations: number;
+    min_deposit: number;
+    address: string;
+    memo: string;
+}
+
+export declare interface SuccessInfo {
+    success: boolean;
 }
 
 export interface KunaAccessToken {
@@ -240,6 +299,40 @@ class KunaUtils {
                 avg_price: parseFloat(a[17])
             };
         });
+    }
+
+    public static mapUserTrades(data: Array<Array<any>>): Array<UserTradeInfo> {
+        return data.map(a => <UserTradeInfo>{
+            trade_id: a[0],
+            market: a[1],
+            timestamp: a[2],
+            order_id: a[3],
+            amount: parseFloat(a[4]),
+            price: parseFloat(a[5]),
+            position: a[8] as TradePosition,
+            fee: parseFloat(a[9]),
+            currency: a[10]
+        });
+    }
+
+    public static mapCancelledOrderInfo(data: any): CancelledOrderInfo {
+        return <CancelledOrderInfo>{
+            id: data.id,
+            side: data.side,
+            type: data.type,
+            price: parseFloat(data.price),
+            avg_execution_price: parseFloat(data.avg_execution_price),
+            symbol: data.symbol,
+            timestamp: data.timestamp,
+            original_amount: parseFloat(data.original_amount),
+            remaining_amount: parseFloat(data.remaining_amount),
+            executed_amount: parseFloat(data.executed_amount),
+            is_cancelled: null,
+            is_hidden: null,
+            is_live: null,
+            was_forced: null,
+            exchange: null
+        };
     }
     
 }
@@ -318,6 +411,14 @@ export class KunaClient {
         return undefined;
     }
 
+    public async cancelOrder(params: CancelOrdersRequestParams): Promise<CancelledOrderInfo> {
+        const ids = params.order_ids != undefined ? params.order_ids : undefined;
+        const response = await this.requestPrivate('/order/cancel', 'POST', {
+            order_ids: ids
+        });
+        return KunaUtils.mapCancelledOrderInfo(response.data);
+    }
+
     public async getUserActiveOrders(params?: UserActiveOrdersRequestParams): Promise<Array<UserOrderInfo>> {
         const markets = params != undefined ? params.markets : undefined;
         const path = `/auth/r/orders${Array.isArray(markets) ? `/${markets.join(',')}` : ''}`;
@@ -331,6 +432,45 @@ export class KunaClient {
         const path = `/auth/r/orders${Array.isArray(markets) ? `/${markets.join(',')}` : ''}/hist`;
         const response = await this.requestPrivate(path, 'POST', body);
         return KunaUtils.mapUserOrders(response.data);
+    }
+
+    public async getUserTradesByOrder(params: UserTradesByOrderRequestParams): Promise<Array<UserTradeInfo>> {
+        const market = params.market;
+        const order_id = params.order_id;
+        const path = `/auth/r/order/${market}:${order_id}/trades`;
+        const response = await this.requestPrivate(path, 'POST');
+        return KunaUtils.mapUserTrades(response.data);
+    }
+
+    public async getSavedCards(): Promise<undefined> {
+        // Not implemented yet
+        return undefined;
+    }
+
+    public async addSavedCard(): Promise<undefined> {
+        // Not implemented yet
+        return undefined;
+    }
+
+    public async removedSavedCard(): Promise<undefined> {
+        // Not implemented yet
+        return undefined;
+    }
+
+    public async getDepositAddress(params: DepositAddressRequestParams): Promise<DepositAddressInfo> {
+        const currency = params.currency;
+        const response = await this.requestPrivate('/auth/deposit/info', 'POST', {
+            currency: currency
+        });
+        return response.data;
+    }
+
+    public async generateDepositAddress(params: DepositAddressRequestParams): Promise<SuccessInfo> {
+        const currency = params.currency;
+        const response = await this.requestPrivate('/auth/payment_addresses', 'POST', {
+            currency: currency
+        });
+        return response.data;
     }
 
     private async request(path: string, method: Method = 'GET', body: object = {}): Promise<AxiosResponse<any>> {
