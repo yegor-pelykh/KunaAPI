@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+import { createHmac } from 'crypto';
 import Axios, { AxiosInstance, AxiosResponse, Method } from 'axios';
 
 enum TradePosition {
@@ -840,7 +840,7 @@ export class KunaClient {
         
         const nonce = new Date().getTime();
         const signatureContent = `${path}${nonce}${JSON.stringify(body)}`;
-        const signature = crypto.createHmac('sha384', this.accessToken.secretKey)
+        const signature = createHmac('sha384', this.accessToken.secretKey)
             .update(signatureContent).digest('hex');
         
         let headers: any = {
