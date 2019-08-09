@@ -1,9 +1,19 @@
 import { createHmac } from 'crypto';
 import Axios, { AxiosInstance, AxiosResponse, Method } from 'axios';
 
-enum TradePosition {
+export enum TradePosition {
     Maker = 1,
     Taker = -1
+}
+
+export enum OrderSide {
+    Buy = 'BUY',
+    Sell = 'SELL'
+}
+
+export enum OrderType {
+    Limit = 'LIMIT',
+    Market = 'MARKET'
 }
 
 // Request types
@@ -254,7 +264,7 @@ export declare interface WalletInfo {
     total: number;
 }
 
-export declare interface CancelledOrderInfo {
+export declare interface CancelledUserOrderInfo {
     id: number;
     side: string;
     type: string;
@@ -274,13 +284,13 @@ export declare interface CancelledOrderInfo {
 
 export declare interface UserOrderInfo {
     id: number;
-    side: string;
+    side: OrderSide;
     market: string;
     created_at: number;
     updated_at: number;
     volume: number;
     initial_volume: number;
-    type: string;
+    type: OrderType;
     status: string;
     price: number;
     avg_price: number;
@@ -486,6 +496,7 @@ export interface KunaAccessToken {
     secretKey: string;
 }
 
+
 class KunaUtils {
 
     public static mapTickers(data: Array<Array<any>>): Array<Ticker> {
@@ -505,8 +516,10 @@ class KunaUtils {
     }
 
     public static mapOrderbook(data: Array<Array<any>>): Orderbook {
-        const ask = new Array<OrderbookRecord>();
-        const bid = new Array<OrderbookRecord>();
+        const orderbook = <Orderbook>{
+            ask: new Array<OrderbookRecord>(),
+            bid: new Array<OrderbookRecord>()
+        };
         for (let i = 0; i < data.length; i++) {
             const rec = <OrderbookRecord>{
                 price: data[i][0],
@@ -515,15 +528,64 @@ class KunaUtils {
             };
             if (rec.volume < 0) {
                 rec.volume = Math.abs(rec.volume);
-                ask.push(rec);
+                orderbook.ask.push(rec);
             } else {
-                bid.push(rec);
+                orderbook.bid.push(rec);
             }
         }
-        return <Orderbook>{
-            ask: ask,
-            bid: bid
+        return orderbook;
+    }
+
+    public static mapFees(data: Array<any>): Array<CryptoFeeInformation | FiatFeeInformation> {
+        for (let info of data) {
+            if (Array.isArray(info.deposit_fees)) {
+                for (let fee of info.deposit_fees) {
+                    if (typeof fee.amount === 'string') {
+                        fee.amount = parseFloat(fee.amount);
+                    }
+                    if (typeof fee.asset === 'object') {
+                        if (typeof fee.asset.amount === 'string') {
+                            fee.asset.amount = parseFloat(fee.asset.amount);
+                        }
+                        if (typeof fee.asset.to_usd === 'string') {
+                            fee.asset.to_usd = parseFloat(fee.asset.to_usd);
+                        }
+                    }
+                }
+            }
+            if (Array.isArray(info.withdraw_fees)) {
+                for (let fee of info.withdraw_fees) {
+                    if (typeof fee.amount === 'string') {
+                        fee.amount = parseFloat(fee.amount);
+                    }
+                    if (typeof fee.asset === 'object') {
+                        if (typeof fee.asset.amount === 'string') {
+                            fee.asset.amount = parseFloat(fee.asset.amount);
+                        }
+                        if (typeof fee.asset.to_usd === 'string') {
+                            fee.asset.to_usd = parseFloat(fee.asset.to_usd);
+                        }
+                    }
+                }
+            }
+            if (typeof info.min_deposit === 'object') {
+                if (typeof info.min_deposit.amount === 'string') {
+                    info.min_deposit.amount = parseFloat(info.min_deposit.amount);
+                }
+                if (typeof info.min_deposit.to_usd === 'string') {
+                    info.min_deposit.to_usd = parseFloat(info.min_deposit.to_usd);
+                }
+            }
+            if (typeof info.min_withdraw === 'object') {
+                if (typeof info.min_withdraw.amount === 'string') {
+                    info.min_withdraw.amount = parseFloat(info.min_withdraw.amount);
+                }
+                if (typeof info.min_withdraw.to_usd === 'string') {
+                    info.min_withdraw.to_usd = parseFloat(info.min_withdraw.to_usd);
+                }
+            }
         }
+        return data as Array<CryptoFeeInformation | FiatFeeInformation>;
     }
 
     public static mapWallets(data: Array<Array<any>>): Array<WalletInfo> {
@@ -537,7 +599,7 @@ class KunaUtils {
     public static mapUserOrders(data: Array<Array<any>>): Array<UserOrderInfo> {
         return data.map(a => {
             const initial_volume: number = parseFloat(a[7]);
-            const side: string = initial_volume > 0 ? 'BUY' : 'SELL';
+            const side: OrderSide = initial_volume > 0 ? OrderSide.Buy : OrderSide.Sell;
             return <UserOrderInfo>{
                 id: a[0],
                 side: side,
@@ -568,8 +630,8 @@ class KunaUtils {
         });
     }
 
-    public static mapCancelledOrderInfo(data: any): CancelledOrderInfo {
-        return <CancelledOrderInfo>{
+    public static mapCancelledUserOrderInfo(data: any): CancelledUserOrderInfo {
+        return <CancelledUserOrderInfo>{
             id: data.id,
             side: data.side,
             type: data.type,
@@ -650,7 +712,7 @@ export class KunaClient {
 
     public async getFees(): Promise<Array<CryptoFeeInformation|FiatFeeInformation>> {
         const response = await this.request('/v3/fees', 'GET');
-        return response.data as Array<CryptoFeeInformation|FiatFeeInformation>;
+        return KunaUtils.mapFees(response.data);
     }
     
     public async getUserAccountInfo(): Promise<AccountInfo> {
@@ -663,17 +725,17 @@ export class KunaClient {
         return KunaUtils.mapWallets(response.data);
     }
 
-    public async createOrder(): Promise<undefined> {
+    public async createUserOrder(): Promise<undefined> {
         // Not implemented yet
         return undefined;
     }
 
-    public async cancelOrder(params: CancelOrdersRequestParams): Promise<CancelledOrderInfo> {
+    public async cancelUserOrder(params: CancelOrdersRequestParams): Promise<CancelledUserOrderInfo> {
         const ids = params.order_ids != undefined ? params.order_ids : undefined;
         const response = await this.requestPrivate('/v3/order/cancel', 'POST', {
             order_ids: ids
         });
-        return KunaUtils.mapCancelledOrderInfo(response.data);
+        return KunaUtils.mapCancelledUserOrderInfo(response.data);
     }
 
     public async getUserActiveOrders(params?: UserActiveOrdersRequestParams): Promise<Array<UserOrderInfo>> {
