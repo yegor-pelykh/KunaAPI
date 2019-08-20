@@ -1,4 +1,15 @@
 # KunaAPI
- Node.js library to interact with Kuna API v3
+ Node.js library to interact with Kuna API v3.\
+ Minimum dependencies.\
+ Each method returns a Promise.
+  
+# Installation
 
- The package is under development, so only some part of the API-functionality is supported.
+ This library is available in the NPM package manager.
+ 
+ <a href="https://nodei.co/npm/kuna-api/"><img src="https://nodei.co/npm/kuna-api.png?downloads=true&downloadRank=true&stars=true"></a>
+ 
+ 
+ To install, enter the command:\
+ ```npm i kuna-api```
+ 
