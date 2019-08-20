@@ -1,12 +1,27 @@
 import { createHmac } from 'crypto';
 import Axios, { AxiosInstance, AxiosResponse, Method } from 'axios';
 
+enum SortOrder {
+    Ascending = 'asc',
+    Descending = 'desc'
+}
+
 enum TradePosition {
     Maker = 1,
     Taker = -1
 }
 
-// Request types
+enum KunaCodeStatus {
+    Created = 'created',
+    Processing = 'processing',
+    Unconfirmed = 'unconfirmed',
+    Active = 'active',
+    Redeeming = 'redeeming',
+    Redeemed = 'redeemed',
+    OnHold = 'onhold',
+    Canceled = 'canceled'
+}
+
 export declare interface ExchangeRatesRequestParams {
     currency: string;
 }
@@ -95,6 +110,16 @@ export declare interface FiatWithdrawMethodsRequestParams {
     public_key: string;
 }
 
+export declare interface PaymentInvoicesRequestParams {
+    public_key: string,
+    reference_id: string,
+    description: string,
+    service: string,
+    service_fields?: { [key: string]: any },
+    currency: string,
+    amount: number
+}
+
 export declare interface KunaCodeRequestParams {
     code: string;
 }
@@ -115,16 +140,16 @@ export declare interface CreateKunaCodeRequestParams {
 export declare interface IssuedKunaCodesRequestParams {
     page?: number;
     per_page?: number;
-    order_by?: string;
-    order_dir?: string;
-    status?: Array<string>;
+    order_by?: 'created_at' | 'redeemed_at' | 'amount';
+    order_dir?: SortOrder;
+    status?: Array<KunaCodeStatus>;
 }
 
 export declare interface RedeemedKunaCodesRequestParams {
     page?: number;
     per_page?: number;
-    order_by?: string;
-    order_dir?: string;
+    order_by?: 'created_at' | 'redeemed_at' | 'amount';
+    order_dir?: SortOrder;
 }
 
 export declare interface KunaTimestampInfo {
@@ -306,13 +331,13 @@ export declare interface DepositAddressInfo {
 }
 
 export declare interface DepositInfo {
-    withdrawal_id: number;
+    deposit_id: number;
 }
 
 export declare interface DepositDetails {
     id: number;
     type: string;
-    created_at: string;
+    created_at: Date;
     destination: string;
     txid: string;
     currency: number;
@@ -330,7 +355,7 @@ export declare interface WithdrawInfo {
 
 export declare interface WithdrawDetails {
     id: number;
-    created_at: string;
+    created_at: Date;
     destination: string;
     currency: string;
     amount: number;
@@ -347,7 +372,7 @@ export declare interface AssetsHistoryInfo {
     items: Array<{
         id: number;
         type: string;
-        created_at: string;
+        created_at: Date;
         destination: string;
         currency: number;
         amount: number;
@@ -462,6 +487,12 @@ export declare interface FiatWithdrawMethodsInfo {
     };
 }
 
+export declare interface PaymentInvoicesInfo {
+    active_payment: {
+        payload: object
+    }
+}
+
 export declare interface KunaCodeInfo {
     id: number;
     sn: string;
@@ -469,10 +500,10 @@ export declare interface KunaCodeInfo {
     recipient: string;
     amount: number;
     currency: string;
-    status: string;
-    non_refundable_before: string;
-    created_at: string;
-    redeemed_at: string;
+    status: KunaCodeStatus;
+    non_refundable_before: Date;
+    created_at: Date;
+    redeemed_at: Date | null;
     comment: string;
     private_comment: string;
 }
@@ -587,7 +618,86 @@ class KunaUtils {
             exchange: null
         };
     }
-    
+
+    public static mapDepositDetails(data: any): DepositDetails {
+        return <DepositDetails>{
+            id: data.id,
+            type: data.type,
+            created_at: new Date(data.created_at),
+            destination: data.destination,
+            txid: data.txid,
+            currency: data.currency,
+            amount: parseFloat(data.amount),
+            status: data.status,
+            sn: data.sn,
+            provider: data.provider
+        };
+    }
+
+    public static mapWithdrawDetails(data: any): WithdrawDetails {
+        return <WithdrawDetails>{
+            id: data.id,
+            created_at: new Date(data.created_at),
+            destination: data.destination,
+            currency: data.currency,
+            amount: parseFloat(data.amount),
+            status: data.status,
+            txid: data.txid,
+            sn: data.sn,
+            fee: parseFloat(data.fee),
+            total_amount: parseFloat(data.total_amount),
+            reference_id: data.reference_id
+        };
+    }
+
+    public static mapAssetsHistory(data: any): AssetsHistoryInfo {
+        if (typeof data === 'object') {
+            if (Array.isArray(data.items)) {
+                data.items = data.items.map((item: any) => {
+                    item.created_at = new Date(item.created_at);
+                    return item;
+                });
+            }
+        }
+        return data as AssetsHistoryInfo;
+    }
+
+    public static mapFiatWithdrawMethodsInfo(data: any): FiatWithdrawMethodsInfo {
+        if (typeof data.data === 'object') {
+            if (typeof data.data.services === 'object') {
+                for (const key in data.data.services) {
+                    if (typeof data.data.services[key] === 'object') {
+                        if (typeof data.data.services[key].amount === 'string') {
+                            data.data.services[key].amount = parseFloat(data.data.services[key].amount);
+                        }
+                    }
+                }
+            }
+        }
+        return data as FiatWithdrawMethodsInfo;
+    }
+
+    public static mapKunaCodeInfo(data: any): KunaCodeInfo {
+        return <KunaCodeInfo>{
+            id: data.id,
+            sn: data.sn,
+            code: data.code,
+            recipient: data.recipient,
+            amount: parseFloat(data.amount),
+            currency: data.currency,
+            status: data.status,
+            non_refundable_before: new Date(data.non_refundable_before),
+            created_at: new Date(data.created_at),
+            redeemed_at: data.redeemed_at != null ? new Date(data.redeemed_at) : null,
+            comment: data.comment,
+            private_comment: data.private_comment
+        }
+    }
+
+    public static mapKunaCodeInfoArray(data: Array<any>): Array<KunaCodeInfo> {
+        return data.map(item => this.mapKunaCodeInfo(item));
+    }
+
 }
 
 export class KunaClient {
@@ -709,7 +819,7 @@ export class KunaClient {
         return undefined;
     }
 
-    public async removedSavedCard(): Promise<undefined> {
+    public async removeSavedCard(): Promise<undefined> {
         // Not implemented yet
         return undefined;
     }
@@ -740,7 +850,7 @@ export class KunaClient {
         const response = await this.requestPrivate('/v3/auth/deposit/details', 'POST', {
             id: id
         });
-        return response.data as DepositDetails;
+        return KunaUtils.mapDepositDetails(response.data);
     }
 
     public async withdraw(params: WithdrawRequestParams): Promise<Array<WithdrawInfo>> {
@@ -750,7 +860,7 @@ export class KunaClient {
 
     public async getWithdrawDetails(params: WithdrawDetailsRequestParams): Promise<WithdrawDetails> {
         const response = await this.requestPrivate('/v3/auth/withdraw/details', 'POST', params);
-        return response.data as WithdrawDetails;
+        return KunaUtils.mapWithdrawDetails(response.data);
     }
     
     public async getUserAssetsHistory(params: UserAssetsHistoryRequestParams): Promise<AssetsHistoryInfo> {
@@ -758,7 +868,7 @@ export class KunaClient {
         const body = Object.assign({}, params);
         delete body.type;
         const response = await this.requestPrivate(path, 'POST', body);
-        return response.data as AssetsHistoryInfo;
+        return KunaUtils.mapAssetsHistory(response.data);
     }
 
     public async getFiatDepositMethods(params: FiatDepositMethodsRequestParams): Promise<FiatDepositMethodsInfo> {
@@ -768,7 +878,12 @@ export class KunaClient {
 
     public async getFiatWithdrawMethods(params: FiatWithdrawMethodsRequestParams): Promise<FiatWithdrawMethodsInfo> {
         const response = await this.requestPrivate('/public-api/payout-prerequest', 'POST', params, this.axiosPay);
-        return response.data as FiatWithdrawMethodsInfo;
+        return KunaUtils.mapFiatWithdrawMethodsInfo(response.data);
+    }
+
+    public async getPaymentInvoices(params: PaymentInvoicesRequestParams): Promise<PaymentInvoicesInfo> {
+        const response = await this.requestPrivate('/public-api/payment-invoices', 'POST', params, this.axiosPay);
+        return response.data as PaymentInvoicesInfo;
     }
 
     public validateKunaCode(params: KunaCodeRequestParams): boolean {
@@ -789,34 +904,34 @@ export class KunaClient {
     public async getKunaCodeInfo(params: KunaCodeRequestParams): Promise<KunaCodeInfo> {
         const path = `/v3/kuna_codes/${params.code.substr(0, 5)}/check`;
         const response = await this.requestPrivate(path, 'GET');
-        return response.data as KunaCodeInfo;
+        return KunaUtils.mapKunaCodeInfo(response.data);
     }
 
     public async getKunaCodeInfoById(params: KunaCodeIdRequestParams): Promise<KunaCodeInfo> {
         const response = await this.requestPrivate('/v3/auth/kuna_codes/details', 'GET', {
             id: params.id
         });
-        return response.data as KunaCodeInfo;
+        return KunaUtils.mapKunaCodeInfo(response.data);
     }
 
     public async createKunaCode(params: CreateKunaCodeRequestParams): Promise<KunaCodeInfo> {
         const response = await this.requestPrivate('/v3/auth/kuna_codes', 'POST', params);
-        return response.data as KunaCodeInfo;
+        return KunaUtils.mapKunaCodeInfo(response.data);
     }
 
     public async redeemKunaCode(params: KunaCodeRequestParams): Promise<KunaCodeInfo> {
         const response = await this.requestPrivate('/v3/auth/kuna_codes/redeem', 'PUT', params);
-        return response.data as KunaCodeInfo;
+        return KunaUtils.mapKunaCodeInfo(response.data);
     }
 
     public async getIssuedKunaCodes(params: IssuedKunaCodesRequestParams): Promise<Array<KunaCodeInfo>> {
         const response = await this.requestPrivate('/v3/auth/kuna_codes/issued-by-me', 'POST', params);
-        return response.data as Array<KunaCodeInfo>;
+        return KunaUtils.mapKunaCodeInfoArray(response.data);
     }
 
     public async getRedeemedKunaCodes(params: RedeemedKunaCodesRequestParams): Promise<Array<KunaCodeInfo>> {
         const response = await this.requestPrivate('/v3/auth/kuna_codes/redeemed-by-me', 'POST', params);
-        return response.data as Array<KunaCodeInfo>;
+        return KunaUtils.mapKunaCodeInfoArray(response.data);
     }
 
     private async request(path: string, method: Method = 'GET', body: object = {}, client: AxiosInstance = this.axiosCommon): Promise<AxiosResponse<any>> {
