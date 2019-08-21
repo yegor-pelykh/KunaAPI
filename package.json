@@ -1,6 +1,6 @@
 {
 	"name": "kuna-api",
-	"version": "0.0.8",
+	"version": "0.0.9",
 	"description": "Node.js library to interact with Kuna API v3",
 	"main": "index.js",
 	"scripts": {
